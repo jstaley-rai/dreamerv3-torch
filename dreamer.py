@@ -26,7 +26,7 @@ to_np = lambda x: x.detach().cpu().numpy()
 
 
 class Dreamer(nn.Module):
-    def __init__(self, obs_space, act_space, config, logger, dataset):
+    def __init__(self, obs_space, act_space, config, logger, dataset, demo_dataset):
         super(Dreamer, self).__init__()
         self._config = config
         self._logger = logger
@@ -41,6 +41,7 @@ class Dreamer(nn.Module):
         self._step = logger.step // config.action_repeat
         self._update_count = 0
         self._dataset = dataset
+        self._demo_dataset = demo_dataset
         self._wm = models.WorldModel(obs_space, act_space, self._step, config)
         self._task_behavior = models.ImagBehavior(config, self._wm)
         if (
@@ -152,6 +153,17 @@ def make_env(config, mode, id):
             task, config.action_repeat, config.size, seed=config.seed + id
         )
         env = wrappers.NormalizeActions(env)
+    elif suite == 'maniskill':
+        import mani_skill.envs
+        import gymnasium as gym
+        env = gym.make(
+            task, # there are more tasks e.g. "PushCube-v1", "PegInsertionSide-v1", ...
+            num_envs=1,
+            obs_mode="state", # there is also "state_dict", "rgbd", ...
+            control_mode="pd_ee_delta_pose", # there is also "pd_joint_delta_pos", ...
+            render_mode="human"
+        ) # TODO: add seed
+        env = wrappers.NormalizeActions(env)
     elif suite == "atari":
         import envs.atari as atari
 
@@ -202,24 +214,33 @@ def make_env(config, mode, id):
         env = wrappers.RewardObs(env)
     return env
 
-
+import datetime
 def main(config):
     tools.set_seed_everywhere(config.seed)
     if config.deterministic_run:
         tools.enable_deterministic_run()
+
+    if not config.logdir:
+        config.logdir = f"./logs/{datetime.datetime.now().strftime(format='%d_%m_%y/%H:%M:%S')}"
     logdir = pathlib.Path(config.logdir).expanduser()
     config.traindir = config.traindir or logdir / "train_eps"
+    config.demodir = config.traindir or logdir / "demo_eps"
     config.evaldir = config.evaldir or logdir / "eval_eps"
     config.steps //= config.action_repeat
     config.eval_every //= config.action_repeat
     config.log_every //= config.action_repeat
     config.time_limit //= config.action_repeat
 
-    print("Logdir", logdir)
+    if type(config.logdir) == str: config.traindir = pathlib.Path(config.traindir)
+    if type(config.demodir) == str: config.demodir =  pathlib.Path(config.demodir)
+
+    print("Logdir", logdir, )
     logdir.mkdir(parents=True, exist_ok=True)
     config.traindir.mkdir(parents=True, exist_ok=True)
     config.evaldir.mkdir(parents=True, exist_ok=True)
-    step = count_steps(config.traindir)
+    config.demodir.mkdir(parents=True, exist_ok=True)
+    
+    step = count_steps(config.traindir) + count_steps(config.demodir)
     # step in logger is environmental step
     logger = tools.Logger(logdir, config.action_repeat * step)
 
@@ -234,6 +255,9 @@ def main(config):
     else:
         directory = config.evaldir
     eval_eps = tools.load_episodes(directory, limit=1)
+
+    demo_eps = tools.load_episodes(config.demodir, limit=None)
+
     make = lambda mode, id: make_env(config, mode, id)
     train_envs = [make("train", i) for i in range(config.envs)]
     eval_envs = [make("eval", i) for i in range(config.envs)]
@@ -284,12 +308,15 @@ def main(config):
     print("Simulate agent.")
     train_dataset = make_dataset(train_eps, config)
     eval_dataset = make_dataset(eval_eps, config)
+    demo_dataset = make_dataset(demo_eps, config)
+
     agent = Dreamer(
         train_envs[0].observation_space,
         train_envs[0].action_space,
         config,
         logger,
         train_dataset,
+        demo_dataset,
     ).to(config.device)
     agent.requires_grad_(requires_grad=False)
     if (logdir / "latest.pt").exists():

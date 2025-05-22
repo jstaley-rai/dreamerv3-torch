@@ -12,14 +12,14 @@ class TimeLimit(gym.Wrapper):
 
     def step(self, action):
         assert self._step is not None, "Must reset environment."
-        obs, reward, done, info = self.env.step(action)
+        obs, reward, done, trunc, info = self.env.step(action)
         self._step += 1
         if self._step >= self._duration:
             done = True
             if "discount" not in info:
                 info["discount"] = np.array(1.0).astype(np.float32)
             self._step = None
-        return obs, reward, done, info
+        return obs, reward, done, trunc, info
 
     def reset(self):
         self._step = 0
@@ -84,10 +84,10 @@ class RewardObs(gym.Wrapper):
         self.observation_space = gym.spaces.Dict(spaces)
 
     def step(self, action):
-        obs, reward, done, info = self.env.step(action)
+        obs, reward, done, trunc, info = self.env.step(action)
         if "obs_reward" not in obs:
             obs["obs_reward"] = np.array([reward], dtype=np.float32)
-        return obs, reward, done, info
+        return obs, reward, done, trunc, info
 
     def reset(self):
         obs = self.env.reset()

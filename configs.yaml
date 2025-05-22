@@ -2,6 +2,7 @@ defaults:
 
   logdir: null
   traindir: null
+  demodir: null
   evaldir: null
   offline_traindir: ''
   offline_evaldir: ''
@@ -110,6 +111,12 @@ dmc_vision:
   video_pred_log: true
   encoder: {mlp_keys: '$^', cnn_keys: 'image'}
   decoder: {mlp_keys: '$^', cnn_keys: 'image'}
+
+maniskill:
+  task: maniskill_PickCube-v1
+  time_limit: 100
+  traindir: '/home/jstaley_theaiinstitute_com/converted_npz_demos'
+  pretrain: 5000
 
 crafter:
   task: crafter_reward
