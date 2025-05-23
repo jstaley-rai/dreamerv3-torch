@@ -116,7 +116,8 @@ maniskill:
   task: maniskill_PickCube-v1
   time_limit: 100
   traindir: '/home/jstaley_theaiinstitute_com/converted_npz_demos'
-  pretrain: 5000
+  pretrain: 10 #5000
+  
 
 crafter:
   task: crafter_reward
@@ -184,8 +185,12 @@ memorymaze:
   task: 'memorymaze_9x9'
 
 debug:
+  task: maniskill_PickCube-v1
+  time_limit: 100
+  traindir: '/home/jstaley_theaiinstitute_com/converted_npz_demos'
+  pretrain: 10 #5000
   debug: True
-  pretrain: 1
   prefill: 1
   batch_size: 10
   batch_length: 20
+  dataset_size: 500
