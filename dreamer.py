@@ -154,15 +154,17 @@ def make_env(config, mode, id):
         )
         env = wrappers.NormalizeActions(env)
     elif suite == 'maniskill':
-        import mani_skill.envs
-        import gymnasium as gym
-        env = gym.make(
-            task, # there are more tasks e.g. "PushCube-v1", "PegInsertionSide-v1", ...
-            num_envs=1,
-            obs_mode="state", # there is also "state_dict", "rgbd", ...
-            control_mode="pd_ee_delta_pose", # there is also "pd_joint_delta_pos", ...
-            render_mode="human"
-        ) # TODO: add seed
+        # import mani_skill
+        # import gymnasium as gym
+        # env = gym.make(
+        #     task, # there are more tasks e.g. "PushCube-v1", "PegInsertionSide-v1", ...
+        #     num_envs=1,
+        #     obs_mode="rgb", # there is also "state_dict", "rgbd", ...
+        #     control_mode="pd_ee_delta_pose", # there is also "pd_joint_delta_pos", ...
+        #     render_mode="human"
+        # ) # TODO: add seed
+        from envs.maniskill import Maniskill
+        env = Maniskill(task, seed=config.seed)
         env = wrappers.NormalizeActions(env)
     elif suite == "atari":
         import envs.atari as atari

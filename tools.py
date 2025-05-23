@@ -153,7 +153,7 @@ def simulate(
             indices = [index for index, d in enumerate(done) if d]
             results = [envs[i].reset() for i in indices]
             results = [r() for r in results]
-            for index, result in zip(indices, results):
+            for index, result in zip(indices, results): # NOTE: Michael, does this kill us? (pulls every transition off of the GPU to save it, done below as well.)
                 t = result.copy()
                 t = {k: convert(v) for k, v in t.items()}
                 # action will be added to transition in add_to_cache
@@ -187,7 +187,7 @@ def simulate(
         length *= 1 - done
         # add to cache
         for a, result, env in zip(action, results, envs):
-            o, r, d, info = result
+            o, r, d, _, info = result
             o = {k: convert(v) for k, v in o.items()}
             transition = o.copy()
             if isinstance(a, dict):
@@ -233,7 +233,7 @@ def simulate(
 
                     score = sum(eval_scores) / len(eval_scores)
                     length = sum(eval_lengths) / len(eval_lengths)
-                    logger.video(f"eval_policy", np.array(video)[None])
+                    logger.video(f"eval_policy", np.array(video))
 
                     if len(eval_scores) >= episodes and not eval_done:
                         logger.scalar(f"eval_return", score)
@@ -332,6 +332,7 @@ def sample_episodes(episodes, length, seed=0):
         while size < length:
             episode = np_random.choice(list(episodes.values()), p=p)
             total = len(next(iter(episode.values())))
+
             # make sure at least one transition included
             if total < 2:
                 continue
@@ -342,18 +343,28 @@ def sample_episodes(episodes, length, seed=0):
                     for k, v in episode.items()
                     if "log_" not in k
                 }
+
+                # print(f"Ret has")
+                # for k,v in ret.items():
+                #     print('\t', k, v[0].shape if hasattr(v[0], 'shape') else v[0])
+
                 if "is_first" in ret:
                     ret["is_first"][0] = True
             else:
                 # 'is_first' comes after 'is_last'
                 index = 0
                 possible = length - size
+
+                # print(f"sampling ep")
+                # for k,v in episode.items():
+                #     print('\t', k, v[0].shape if hasattr(v[0], 'shape') else v[0])
+
                 ret = {
                     k: np.append(
                         ret[k], v[index : min(index + possible, total)].copy(), axis=0
                     )
                     for k, v in episode.items()
-                    if "log_" not in k
+                    if "log" not in k 
                 }
                 if "is_first" in ret:
                     ret["is_first"][size] = True
@@ -369,7 +380,7 @@ def load_episodes(directory, limit=None, reverse=True):
         for filename in reversed(sorted(directory.glob("*.npz"))):
             try:
                 with filename.open("rb") as f:
-                    episode = np.load(f)
+                    episode = np.load(f, allow_pickle=True)
                     episode = {k: episode[k] for k in episode.keys()}
             except Exception as e:
                 print(f"Could not load episode: {e}")
@@ -383,7 +394,7 @@ def load_episodes(directory, limit=None, reverse=True):
         for filename in sorted(directory.glob("*.npz")):
             try:
                 with filename.open("rb") as f:
-                    episode = np.load(f)
+                    episode = np.load(f, allow_pickle=True)
                     episode = {k: episode[k] for k in episode.keys()}
             except Exception as e:
                 print(f"Could not load episode: {e}")
@@ -392,6 +403,29 @@ def load_episodes(directory, limit=None, reverse=True):
             total += len(episode["reward"]) - 1
             if limit and total >= limit:
                 break
+
+    # TODO: Move this into dataset changeover
+    for epname, epdata in episodes.items():
+        if 'image' in epdata: 
+            print(epdata['image'].shape, end=' -> ')
+            img_shape = epdata['image'].shape
+            if len(img_shape) == 4 and (img_shape[1] == 1 or img_shape[1] == 3):
+                epdata['image'] = np.transpose(epdata['image'], (0,2,3,1))
+            elif len(img_shape) == 5 and (img_shape[2] == 1 or img_shape[2] == 3):
+                epdata['image'] = np.transpose(epdata['image'], (0,1,3,4,2))
+            else:
+                continue
+            
+            
+            episodes[epname]['image'] = epdata['image']
+            print(episodes[epname]['image'].shape)
+
+        # epdata['action'] = np.expand_dims(epdata['action'], 1)
+        # print(epdata['action'].shape)
+        # unsqueeze all the data 
+        # for k,v in epdata.items():
+            # epdata[k] = np.expand_dims(v, 0)
+
     return episodes
 
 
@@ -782,6 +816,11 @@ def args_type(default):
             return float(x) if ("e" in x or "." in x) else int(x)
         if isinstance(default, (list, tuple)):
             return tuple(args_type(default[0])(y) for y in x.split(","))
+        
+        # It's a string still, check for exponential
+        exponential_regex = re.compile(r"^[+-]?\d+(?:\.\d*)?[eE][+-]?\d+$")
+        if exponential_regex.match(x): return float(x)
+        
         return type(default)(x)
 
     def parse_object(x):

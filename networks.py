@@ -178,6 +178,11 @@ class RSSM(nn.Module):
             prev_action = torch.zeros(
                 (len(is_first), self._num_actions), device=self._device
             )
+
+            if len(embed.shape) > len(prev_action.shape):
+                prev_state = {k:v.unsqueeze(0) for k,v in prev_state.items()}
+                prev_action = prev_action.unsqueeze(0)
+
         # overwrite the prev_state only where is_first=True
         elif torch.sum(is_first) > 0:
             is_first = is_first[:, None]
@@ -215,7 +220,11 @@ class RSSM(nn.Module):
         # (batch, stoch * discrete_num) -> (batch, stoch * discrete_num + action)
         x = torch.cat([prev_stoch, prev_action], -1)
         # (batch, stoch * discrete_num + action, embed) -> (batch, hidden)
-        x = self._img_in_layers(x)
+        try:
+            x = self._img_in_layers(x)
+        except Exception as e:
+            print(f"Exception ", e)
+            from IPython import embed; embed()
         for _ in range(self._rec_depth):  # rec depth is not correctly implemented
             deter = prev_state["deter"]
             # (batch, hidden), (batch, deter) -> (batch, deter), (batch, deter)
@@ -485,10 +494,13 @@ class ConvEncoder(nn.Module):
 
     def forward(self, obs):
         obs -= 0.5
+        print(obs.shape, end=' --> ')
         # (batch, time, h, w, ch) -> (batch * time, h, w, ch)
         x = obs.reshape((-1,) + tuple(obs.shape[-3:]))
         # (batch * time, h, w, ch) -> (batch * time, ch, h, w)
+        print(x.shape, end=' --> ')
         x = x.permute(0, 3, 1, 2)
+        print(x.shape)
         x = self.layers(x)
         # (batch * time, ...) -> (batch * time, -1)
         x = x.reshape([x.shape[0], np.prod(x.shape[1:])])
